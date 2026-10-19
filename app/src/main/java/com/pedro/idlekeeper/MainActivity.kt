@@ -25,7 +25,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -139,7 +138,6 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun addAccount(i: Int) {
         val wv = KeepAliveWebView(this)
-        // Conta 1 usa o perfil padrão (mantém o login que você já tinha).
         if (multiProfile && i > 0) {
             try { WebViewCompat.setProfile(wv, "conta${i + 1}") } catch (_: Exception) {}
         }
@@ -185,8 +183,6 @@ class MainActivity : AppCompatActivity() {
 
         container.addView(wv, FrameLayout.LayoutParams(-1, -1))
         accounts.add(acc)
-        // A conta 1 carrega já; a 2 espera 20s (ou até você tocar na aba), para não
-        // sobrecarregar a verificação do Cloudflare com duas páginas abrindo juntas.
         if (i == 0) loadAccount(acc) else handler.postDelayed({ loadAccount(acc) }, 20_000)
     }
 
@@ -229,7 +225,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createChannel() {
-        // Remove canais de versões anteriores (avisos de captura/shiny).
         val nm = getSystemService(NotificationManager::class.java)
         nm.deleteNotificationChannel("shiny")
         nm.deleteNotificationChannel(CH_CAPTURA)
@@ -268,7 +263,6 @@ class MainActivity : AppCompatActivity() {
         if (i !in accounts.indices) return
         current = i
         prefs.edit().putInt("current", i).apply()
-        // Todas ficam visíveis (empilhadas); só traz a escolhida para a frente.
         accounts[i].webView.bringToFront()
         loadAccount(accounts[i])
         accounts[i].webView.requestFocus()
@@ -340,27 +334,26 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-private fun fetchLatest(): Release? {
-    // URL do seu Cloudflare Worker que você testou
-    val workerUrl = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev"
+    private fun fetchLatest(): Release? {
+        val workerUrl = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev"
 
-    val c = URL(workerUrl).openConnection() as HttpURLConnection
-    c.connectTimeout = 15000
-    c.readTimeout = 15000
-    c.requestMethod = "GET"
+        val c = URL(workerUrl).openConnection() as HttpURLConnection
+        c.connectTimeout = 15000
+        c.readTimeout = 15000
+        c.requestMethod = "GET"
 
-    val code = c.responseCode
-    if (code != 200) throw Exception("Servidor respondeu $code")
+        val code = c.responseCode
+        if (code != 200) throw Exception("Servidor respondeu $code")
 
-    val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
-    val tag = json.optString("version", "")
-    val downloadUrl = json.optString("downloadUrl", "")
+        val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+        val tag = json.optString("version", "")
+        val downloadUrl = json.optString("downloadUrl", "")
 
-    val number = tag.filter { it.isDigit() }.toLongOrNull() ?: return null
-    if (downloadUrl.isEmpty()) return null
+        val number = tag.filter { it.isDigit() }.toLongOrNull() ?: return null
+        if (downloadUrl.isEmpty()) return null
 
-    return Release(number, tag, downloadUrl)
-}
+        return Release(number, tag, downloadUrl)
+    }
 
     private fun offerUpdate(rel: Release) {
         AlertDialog.Builder(this)
@@ -399,7 +392,7 @@ private fun fetchLatest(): Release? {
         }.start()
     }
 
-   private fun downloadApk(rel: Release): File {
+    private fun downloadApk(rel: Release): File {
         val dir = File(cacheDir, "updates")
         dir.deleteRecursively()
         dir.mkdirs()
@@ -434,27 +427,6 @@ private fun fetchLatest(): Release? {
         startActivity(i)
     }
 
-    private fun askToken() {
-        val et = EditText(this).apply {
-            setText(ghToken())
-            hint = "Token do GitHub (somente leitura)"
-            setPadding(48, 32, 48, 32)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Token do GitHub")
-            .setMessage(
-                "Necessário só se o repositório for privado. Use um token com permissão " +
-                    "somente de leitura (Contents: Read-only) neste repositório."
-            )
-            .setView(et)
-            .setPositiveButton("Salvar") { _, _ ->
-                prefs.edit().putString("gh_token", et.text.toString().trim()).apply()
-                Toast.makeText(this, "Token salvo", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
-    }
-
     // ---------- permissões e ciclo de vida ----------
 
     private fun askNotificationPermission() {
@@ -474,7 +446,6 @@ private fun fetchLatest(): Release? {
         }
     }
 
-    // Não pausamos as WebViews ao sair do app, para o jogo continuar rodando.
     override fun onPause() { super.onPause(); accounts.firstOrNull()?.webView?.resumeTimers() }
     override fun onStop() { super.onStop(); accounts.firstOrNull()?.webView?.resumeTimers() }
     override fun onResume() {
@@ -494,11 +465,8 @@ private fun fetchLatest(): Release? {
 
     companion object {
         const val GAME_URL = "https://pokeidle.io/app"
-        const val OWNER = "pedro-lgc"
-        const val REPO = "pokeidle-4tela"
         const val CH_CAPTURA = "captura"
 
-        // Observa o texto que aparece na página. Só LÊ; não clica em nada no jogo.
         const val WATCHER_JS = """
 (function(){
   if (window.__pkWatch) return; window.__pkWatch = true;
