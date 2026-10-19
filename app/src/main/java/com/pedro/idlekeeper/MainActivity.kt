@@ -399,7 +399,7 @@ private fun fetchLatest(): Release? {
         }.start()
     }
 
-    private fun downloadApk(rel: Release): File {
+   private fun downloadApk(rel: Release): File {
         val dir = File(cacheDir, "updates")
         dir.deleteRecursively()
         dir.mkdirs()
