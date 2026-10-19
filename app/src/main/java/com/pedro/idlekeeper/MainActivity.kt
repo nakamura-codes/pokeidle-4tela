@@ -335,7 +335,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchLatest(): Release? {
-        val workerUrl = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev"
+        val workerUrl = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev?json=true"
 
         val c = URL(workerUrl).openConnection() as HttpURLConnection
         c.connectTimeout = 15000
