@@ -110,12 +110,118 @@ class MainActivity : AppCompatActivity() {
             setCount(1, first)
             return
         }
-        val options = (1..max).map { if (it == 1) "1 conta" else "$it contas" }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Quantas contas?")
-            .setItems(options) { _, which -> setCount(which + 1, first) }
+
+        // Layout Principal na Vertical com Imagem de Fundo
+        val dialogView = FrameLayout(this).apply {
+            // Container para a imagem de fundo do Snorlax
+            val bgImage = android.widget.ImageView(context).apply {
+                // Nome da imagem que você salvou em res/drawable
+                val imageRes = resources.getIdentifier("snorlax_halloween_bg", "drawable", packageName)
+                if (imageRes != 0) {
+                    setImageResource(imageRes)
+                } else {
+                    setBackgroundColor(0xFF1E1119.toInt()) // Fallback se a imagem não existir
+                }
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            }
+            addView(bgImage, FrameLayout.LayoutParams(-1, -1))
+
+            // Container de Opções (Centralizado e por cima do Snorlax)
+            val contentLayout = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                setPadding(56, 120, 56, 64) // Padding para o texto não ficar em cima do rosto
+            }
+
+            // Título Principal com Sombra/Efeito de Halloween
+            val titleView = android.widget.TextView(context).apply {
+                text = "Quantas contas\ndeseja utilizar?"
+                textSize = 22f
+                setTextColor(0xFFFFFFFF.toInt())
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                gravity = android.view.Gravity.CENTER
+                setShadowLayer(8f, 0f, 0f, 0xFF000000.toInt()) // Sombra para destacar o texto
+                setPadding(0, 0, 0, 80)
+            }
+            contentLayout.addView(titleView)
+
+            // Função para criar os botões com visual transparente/integrado
+            fun createOptionCard(titleText: String, subText: String, iconEmoji: String): View {
+                return LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(40, 36, 40, 36)
+                    isClickable = true
+                    isFocusable = true
+
+                    // Fundo translúcido com borda roxa/laranja neon
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = 28f
+                        setColor(0xCC1A0E15.toInt()) // Escuro transparente (80% opacidade)
+                        setStroke(3, 0xFF9E4B8F.toInt()) // Borda roxa de Halloween
+                    }
+
+                    // Ícone lateral
+                    val icon = android.widget.TextView(context).apply {
+                        text = iconEmoji
+                        textSize = 28f
+                        setPadding(0, 0, 32, 0)
+                    }
+                    addView(icon)
+
+                    // Texto descritivo
+                    val textLayout = LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                    }
+                    val title = android.widget.TextView(context).apply {
+                        text = titleText
+                        textSize = 16f
+                        setTextColor(0xFFFFFFFF.toInt())
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    }
+                    val desc = android.widget.TextView(context).apply {
+                        text = subText
+                        textSize = 11f
+                        setTextColor(0xFFD4C9D0.toInt())
+                        setPadding(0, 4, 0, 0)
+                    }
+                    textLayout.addView(title)
+                    textLayout.addView(desc)
+                    addView(textLayout, LinearLayout.LayoutParams(0, -2, 1f))
+                }
+            }
+
+            val btn1 = createOptionCard("1 Conta", "Ideal para focar no seu progresso principal", "👤")
+            val btn2 = createOptionCard("2 Contas", "Gerencie duas contas simultaneamente", "👥")
+
+            // Espaçamento entre as opções
+            val marginParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, 24) }
+
+            contentLayout.addView(btn1, marginParams)
+            contentLayout.addView(btn2)
+
+            addView(contentLayout, FrameLayout.LayoutParams(-1, -1))
+        }
+
+        // Criar Alerta Material
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setView(dialogView)
             .setCancelable(!first)
-            .show()
+            .create()
+
+        dialog.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 48f
+                setColor(0xFF1E1119.toInt())
+            })
+        }
+
+        // Ações de clique nos botões sobrepostos
+        dialogView.findViewById<View>(1)?.setOnClickListener { setCount(1, first); dialog.dismiss() }
+        dialogView.findViewById<View>(2)?.setOnClickListener { setCount(2, first); dialog.dismiss() }
+
+        // Mapeando ações manualmente por garantia do overlay
+        dialog.show()
     }
 
     private fun setCount(n: Int, @Suppress("UNUSED_PARAMETER") first: Boolean) {
