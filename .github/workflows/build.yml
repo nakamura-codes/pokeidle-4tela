@@ -1,0 +1,35 @@
+name: Build APK
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - name: Build debug APK
+        run: gradle assembleDebug --no-daemon -PbuildNumber=${{ github.run_number }}
+      - name: Renomear APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk pokeidle.mobile.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pokeidle.mobile
+          path: pokeidle.mobile.apk
+      - name: Publicar Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ github.run_number }}" pokeidle.mobile.apk \
+            --title "PokeIdle v${{ github.run_number }}" \
+            --notes "Build automática do PokeIdle."
