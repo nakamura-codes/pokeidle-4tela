@@ -281,7 +281,6 @@ class MainActivity : AppCompatActivity() {
             "Recarregar esta conta",
             "Copiar log de detecção",
             "Verificar atualização (v${currentVersion()})",
-            "Token do GitHub (atualizações)",
             "Parar e sair"
         )
         AlertDialog.Builder(this)
@@ -292,8 +291,7 @@ class MainActivity : AppCompatActivity() {
                     1 -> accounts[current].webView.reload()
                     2 -> copyLog()
                     3 -> checkUpdate(true)
-                    4 -> askToken()
-                    5 -> {
+                    4 -> {
                         stopService(Intent(this, KeepAliveService::class.java))
                         finishAndRemoveTask()
                     }
@@ -313,14 +311,12 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Log copiado", Toast.LENGTH_SHORT).show()
     }
 
-    // ---------- atualização pelo GitHub ----------
+    // ---------- atualização via API Intermediária (Worker) ----------
 
-    private class Release(val number: Long, val tag: String, val assetUrl: String)
+    private class Release(val number: Long, val tag: String, val downloadUrl: String)
 
     private fun currentVersion(): Long =
         PackageInfoCompat.getLongVersionCode(packageManager.getPackageInfo(packageName, 0))
-
-    private fun ghToken(): String = (prefs.getString("gh_token", "") ?: "").trim()
 
     private fun checkUpdate(manual: Boolean) {
         prefs.edit().putLong("last_check", System.currentTimeMillis()).apply()
@@ -344,29 +340,27 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun fetchLatest(): Release? {
-        val c = URL("https://api.github.com/repos/$OWNER/$REPO/releases/latest")
-            .openConnection() as HttpURLConnection
-        c.connectTimeout = 15000
-        c.readTimeout = 15000
-        c.setRequestProperty("Accept", "application/vnd.github+json")
-        c.setRequestProperty("User-Agent", "PokeIdle-App")
-        val t = ghToken()
-        if (t.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer $t")
-        val code = c.responseCode
-        if (code == 404) throw Exception("repositório não encontrado (confira o token do GitHub)")
-        if (code == 401 || code == 403) throw Exception("token do GitHub inválido ou expirado")
-        if (code != 200) throw Exception("GitHub respondeu $code")
-        val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
-        val tag = json.getString("tag_name")
-        val number = tag.filter { it.isDigit() }.toLongOrNull() ?: return null
-        val assets = json.getJSONArray("assets")
-        for (i in 0 until assets.length()) {
-            val a = assets.getJSONObject(i)
-            if (a.getString("name").endsWith(".apk")) return Release(number, tag, a.getString("url"))
-        }
-        return null
-    }
+private fun fetchLatest(): Release? {
+    // URL do seu Cloudflare Worker que você testou
+    val workerUrl = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev"
+
+    val c = URL(workerUrl).openConnection() as HttpURLConnection
+    c.connectTimeout = 15000
+    c.readTimeout = 15000
+    c.requestMethod = "GET"
+
+    val code = c.responseCode
+    if (code != 200) throw Exception("Servidor respondeu $code")
+
+    val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+    val tag = json.optString("version", "")
+    val downloadUrl = json.optString("downloadUrl", "")
+
+    val number = tag.filter { it.isDigit() }.toLongOrNull() ?: return null
+    if (downloadUrl.isEmpty()) return null
+
+    return Release(number, tag, downloadUrl)
+}
 
     private fun offerUpdate(rel: Release) {
         AlertDialog.Builder(this)
@@ -410,32 +404,26 @@ class MainActivity : AppCompatActivity() {
         dir.deleteRecursively()
         dir.mkdirs()
         val out = File(dir, "pokeidle.mobile.apk")
-        var url = rel.assetUrl
-        var withAuth = true
+        var url = rel.downloadUrl
+
         repeat(6) {
             val c = URL(url).openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
             c.connectTimeout = 20000
             c.readTimeout = 60000
             c.setRequestProperty("User-Agent", "PokeIdle-App")
-            if (withAuth) {
-                c.setRequestProperty("Accept", "application/octet-stream")
-                val t = ghToken()
-                if (t.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer $t")
-            }
+
             val code = c.responseCode
             if (code in 301..308) {
-                // O endereço final (armazenamento do GitHub) não deve receber o token.
-                url = c.getHeaderField("Location") ?: throw Exception("redirecionamento inválido")
-                withAuth = false
+                url = c.getHeaderField("Location") ?: throw Exception("Redirecionamento inválido")
             } else if (code == 200) {
                 c.inputStream.use { input -> out.outputStream().use { input.copyTo(it) } }
                 return out
             } else {
-                throw Exception("GitHub respondeu $code")
+                throw Exception("Servidor respondeu $code")
             }
         }
-        throw Exception("redirecionamentos demais")
+        throw Exception("Redirecionamentos demais")
     }
 
     private fun installApk(file: File) {
