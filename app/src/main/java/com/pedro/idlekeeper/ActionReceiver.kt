@@ -8,25 +8,35 @@ import android.os.Process
 import kotlin.system.exitProcess
 
 /**
- * Receiver responsável por capturar o clique do botão "Encerrar" na notificação,
- * parar o serviço em segundo plano e finalizar o processo do app.
+ * Receiver responsável por gerenciar a notificação fixa:
+ * 1. Encerra o app/serviço ao clicar em "Encerrar".
+ * 2. Recria a notificação imediatamente se ela for descartada.
  */
 class ActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context?, intent: Intent?) {
-        if (intent?.action == "ACTION_STOP_APP") {
-            context?.let { ctx ->
-                // 1. Para o serviço KeepAlive
-                val serviceIntent = Intent(ctx, KeepAliveService::class.java)
-                ctx.stopService(serviceIntent)
+        when (intent?.action) {
+            "ACTION_STOP_APP" -> {
+                context?.let { ctx ->
+                    // 1. Encerra o KeepAliveService
+                    val serviceIntent = Intent(ctx, KeepAliveService::class.java)
+                    ctx.stopService(serviceIntent)
 
-                // 2. Remove a notificação da barra (ID 1001)
-                val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                nm.cancel(KeepAliveService.NOTIF_ID)
+                    // 2. Cancela a notificação fixa
+                    val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(KeepAliveService.NOTIF_ID)
 
-                // 3. Encerra o processo do app por completo
-                Process.killProcess(Process.myPid())
-                exitProcess(0)
+                    // 3. Mata o processo do aplicativo
+                    Process.killProcess(Process.myPid())
+                    exitProcess(0)
+                }
+            }
+            "ACTION_RESTORE_NOTIFICATION" -> {
+                // Se o usuário tentar remover a notificação deslizando, ela reaparece na hora
+                context?.let { ctx ->
+                    val serviceIntent = Intent(ctx, KeepAliveService::class.java)
+                    ctx.startService(serviceIntent)
+                }
             }
         }
     }
