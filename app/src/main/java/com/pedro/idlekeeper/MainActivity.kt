@@ -9,6 +9,19 @@ import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.ColorFilter
+import android.graphics.Matrix
+import android.graphics.Path
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.widget.ImageView
+import android.widget.TextView
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,13 +31,13 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -46,6 +59,67 @@ class KeepAliveWebView(context: android.content.Context) : WebView(context) {
     override fun onWindowVisibilityChanged(visibility: Int) {
         if (visibility != View.GONE) super.onWindowVisibilityChanged(View.VISIBLE)
     }
+}
+
+/** Ícone de Poké Ball desenhado em código, usado nas abas. */
+class PokeBallDrawable(private val size: Int) : Drawable() {
+    private val red = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE53935.toInt() }
+    private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+    private val dark = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF212121.toInt() }
+
+    override fun draw(c: Canvas) {
+        val b = bounds
+        val cx = b.exactCenterX()
+        val cy = b.exactCenterY()
+        val r = minOf(b.width(), b.height()) / 2f
+        c.drawCircle(cx, cy, r, dark)
+        val inner = r * 0.84f
+        val rect = RectF(cx - inner, cy - inner, cx + inner, cy + inner)
+        c.drawArc(rect, 180f, 180f, true, red)
+        c.drawArc(rect, 0f, 180f, true, white)
+        c.drawRect(cx - inner, cy - r * 0.09f, cx + inner, cy + r * 0.09f, dark)
+        c.drawCircle(cx, cy, r * 0.30f, dark)
+        c.drawCircle(cx, cy, r * 0.16f, white)
+    }
+
+    override fun getIntrinsicWidth() = size
+    override fun getIntrinsicHeight() = size
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+    @Suppress("DEPRECATION")
+    override fun getOpacity() = PixelFormat.TRANSLUCENT
+}
+
+/** Engrenagem branca desenhada em código (não depende de fonte/emoji do aparelho). */
+class GearDrawable(private val size: Int) : Drawable() {
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+
+    override fun draw(c: Canvas) {
+        val b = bounds
+        val cx = b.exactCenterX()
+        val cy = b.exactCenterY()
+        val r = minOf(b.width(), b.height()) / 2f
+        val gear = Path().apply { addCircle(cx, cy, r * 0.66f, Path.Direction.CW) }
+        for (k in 0 until 8) {
+            val tooth = Path().apply {
+                addRect(cx - r * 0.17f, cy - r, cx + r * 0.17f, cy - r * 0.55f, Path.Direction.CW)
+            }
+            val m = Matrix()
+            m.postRotate(k * 45f, cx, cy)
+            tooth.transform(m)
+            gear.op(tooth, Path.Op.UNION)
+        }
+        val hole = Path().apply { addCircle(cx, cy, r * 0.30f, Path.Direction.CW) }
+        gear.op(hole, Path.Op.DIFFERENCE)
+        c.drawPath(gear, paint)
+    }
+
+    override fun getIntrinsicWidth() = size
+    override fun getIntrinsicHeight() = size
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+    @Suppress("DEPRECATION")
+    override fun getOpacity() = PixelFormat.TRANSLUCENT
 }
 
 class Account(val index: Int, val webView: KeepAliveWebView) {
@@ -75,11 +149,24 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFF2A1520.toInt())
         }
-        tabBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        tabBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xFFE53935.toInt(), 0xFFC62828.toInt())
+            )
+        }
         container = FrameLayout(this)
         root.addView(tabBar, LinearLayout.LayoutParams(-1, -2))
+        // Faixa vermelha, como a divisória de uma Poké Ball
+        root.addView(View(this).apply { setBackgroundColor(0xFF7F0000.toInt()) },
+            LinearLayout.LayoutParams(-1, dp(3)))
         root.addView(container, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        window.statusBarColor = 0xFFE53935.toInt()
+        window.navigationBarColor = 0xFF7F0000.toInt()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -94,13 +181,13 @@ class MainActivity : AppCompatActivity() {
 
         val saved = prefs.getInt("count", 0)
         current = prefs.getInt("current", 0)
-        if (saved == 0) askCount(true) else applyCount(minOf(saved, if (multiProfile) 2 else 1))
+        if (saved == 0) askCount(true) else applyCount(minOf(saved, if (multiProfile) 4 else 1))
     }
 
     // ---------- contas ----------
 
     private fun askCount(first: Boolean) {
-        val max = if (multiProfile) 2 else 1
+        val max = if (multiProfile) 4 else 1
         if (max == 1) {
             Toast.makeText(
                 this,
@@ -111,117 +198,98 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Layout Principal na Vertical com Imagem de Fundo
+        var dlg: AlertDialog? = null
+        val h = minOf(dp(480), (resources.displayMetrics.heightPixels * 0.85).toInt())
+
         val dialogView = FrameLayout(this).apply {
-            // Container para a imagem de fundo do Snorlax
-            val bgImage = android.widget.ImageView(context).apply {
-                // Nome da imagem que você salvou em res/drawable
+            minimumHeight = h
+
+            // Imagem de fundo (res/drawable/snorlax_halloween_bg); se não existir, usa cor sólida.
+            val bgImage = ImageView(context).apply {
                 val imageRes = resources.getIdentifier("snorlax_halloween_bg", "drawable", packageName)
-                if (imageRes != 0) {
-                    setImageResource(imageRes)
-                } else {
-                    setBackgroundColor(0xFF1E1119.toInt()) // Fallback se a imagem não existir
-                }
-                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                if (imageRes != 0) setImageResource(imageRes) else setBackgroundColor(0xFF1E1119.toInt())
+                scaleType = ImageView.ScaleType.CENTER_CROP
             }
-            addView(bgImage, FrameLayout.LayoutParams(-1, -1))
+            addView(bgImage, FrameLayout.LayoutParams(-1, h))
 
-            // Container de Opções (Centralizado e por cima do Snorlax)
-            val contentLayout = LinearLayout(context).apply {
+            val content = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = android.view.Gravity.CENTER
-                setPadding(56, 120, 56, 64) // Padding para o texto não ficar em cima do rosto
+                gravity = Gravity.CENTER
+                setPadding(dp(20), dp(40), dp(20), dp(24))
             }
-
-            // Título Principal com Sombra/Efeito de Halloween
-            val titleView = android.widget.TextView(context).apply {
+            content.addView(TextView(context).apply {
                 text = "Quantas contas\ndeseja utilizar?"
                 textSize = 22f
                 setTextColor(0xFFFFFFFF.toInt())
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                gravity = android.view.Gravity.CENTER
-                setShadowLayer(8f, 0f, 0f, 0xFF000000.toInt()) // Sombra para destacar o texto
-                setPadding(0, 0, 0, 80)
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setShadowLayer(8f, 0f, 0f, 0xFF000000.toInt())
+                setPadding(0, 0, 0, dp(28))
+            })
+
+            val subs = listOf(
+                "Ideal para focar no seu progresso principal",
+                "Gerencie duas contas simultaneamente",
+                "Mais contas usam mais memória e bateria",
+                "Máximo: pede um celular com bastante RAM"
+            )
+            val emojis = listOf("👤", "👥", "👥", "👥")
+            for (n in 1..max) {
+                val lp = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, dp(10)) }
+                content.addView(
+                    optionCard(if (n == 1) "1 Conta" else "$n Contas", subs[n - 1], emojis[n - 1]) {
+                        setCount(n, first); dlg?.dismiss()
+                    }, lp
+                )
             }
-            contentLayout.addView(titleView)
-
-            // Função para criar os botões com visual transparente/integrado
-            fun createOptionCard(titleText: String, subText: String, iconEmoji: String): View {
-                return LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.CENTER_VERTICAL
-                    setPadding(40, 36, 40, 36)
-                    isClickable = true
-                    isFocusable = true
-
-                    // Fundo translúcido com borda roxa/laranja neon
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = 28f
-                        setColor(0xCC1A0E15.toInt()) // Escuro transparente (80% opacidade)
-                        setStroke(3, 0xFF9E4B8F.toInt()) // Borda roxa de Halloween
-                    }
-
-                    // Ícone lateral
-                    val icon = android.widget.TextView(context).apply {
-                        text = iconEmoji
-                        textSize = 28f
-                        setPadding(0, 0, 32, 0)
-                    }
-                    addView(icon)
-
-                    // Texto descritivo
-                    val textLayout = LinearLayout(context).apply {
-                        orientation = LinearLayout.VERTICAL
-                    }
-                    val title = android.widget.TextView(context).apply {
-                        text = titleText
-                        textSize = 16f
-                        setTextColor(0xFFFFFFFF.toInt())
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                    }
-                    val desc = android.widget.TextView(context).apply {
-                        text = subText
-                        textSize = 11f
-                        setTextColor(0xFFD4C9D0.toInt())
-                        setPadding(0, 4, 0, 0)
-                    }
-                    textLayout.addView(title)
-                    textLayout.addView(desc)
-                    addView(textLayout, LinearLayout.LayoutParams(0, -2, 1f))
-                }
-            }
-
-            val btn1 = createOptionCard("1 Conta", "Ideal para focar no seu progresso principal", "👤")
-            val btn2 = createOptionCard("2 Contas", "Gerencie duas contas simultaneamente", "👥")
-
-            // Espaçamento entre as opções
-            val marginParams = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, 24) }
-
-            contentLayout.addView(btn1, marginParams)
-            contentLayout.addView(btn2)
-
-            addView(contentLayout, FrameLayout.LayoutParams(-1, -1))
+            addView(content, FrameLayout.LayoutParams(-1, h))
         }
 
-        // Criar Alerta Material
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+        dlg = AlertDialog.Builder(this)
             .setView(dialogView)
             .setCancelable(!first)
             .create()
+        dlg.window?.setBackgroundDrawable(GradientDrawable().apply {
+            cornerRadius = dp(18).toFloat()
+            setColor(0xFF1E1119.toInt())
+        })
+        dlg.show()
+    }
 
-        dialog.window?.apply {
-            setBackgroundDrawable(android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = 48f
-                setColor(0xFF1E1119.toInt())
+    private fun optionCard(titleText: String, subText: String, emoji: String, onClick: () -> Unit): View {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            isClickable = true
+            isFocusable = true
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(0xCC1A0E15.toInt())
+                setStroke(dp(1), 0xFF9E4B8F.toInt())
+            }
+            setOnClickListener { onClick() }
+
+            addView(TextView(context).apply {
+                text = emoji
+                textSize = 28f
+                setPadding(0, 0, dp(12), 0)
             })
+            val texts = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            texts.addView(TextView(context).apply {
+                text = titleText
+                textSize = 16f
+                setTextColor(0xFFFFFFFF.toInt())
+                typeface = Typeface.DEFAULT_BOLD
+            })
+            texts.addView(TextView(context).apply {
+                text = subText
+                textSize = 11f
+                setTextColor(0xFFD4C9D0.toInt())
+                setPadding(0, dp(2), 0, 0)
+            })
+            addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
         }
-
-        // Ações de clique nos botões sobrepostos
-        dialogView.findViewById<View>(1)?.setOnClickListener { setCount(1, first); dialog.dismiss() }
-        dialogView.findViewById<View>(2)?.setOnClickListener { setCount(2, first); dialog.dismiss() }
-
-        // Mapeando ações manualmente por garantia do overlay
-        dialog.show()
     }
 
     private fun setCount(n: Int, @Suppress("UNUSED_PARAMETER") first: Boolean) {
@@ -242,8 +310,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun addAccount(i: Int) {
+    private fun addAccount(i: Int, immediate: Boolean = false) {
         val wv = KeepAliveWebView(this)
+        // Conta 1 usa o perfil padrão (mantém o login que você já tinha).
         if (multiProfile && i > 0) {
             try { WebViewCompat.setProfile(wv, "conta${i + 1}") } catch (_: Exception) {}
         }
@@ -264,6 +333,13 @@ class MainActivity : AppCompatActivity() {
                 if (url != null && url.startsWith("https://pokeidle.io")) {
                     view.evaluateJavascript(WATCHER_JS, null)
                 }
+            }
+
+            // Se o Android matar o processo da página por falta de memória, reinicia só esta conta
+            // (sem isso o app inteiro fecharia).
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                handler.post { if (accounts.any { it === acc }) recreateAccount(acc.index) }
+                return true
             }
 
             override fun onReceivedError(
@@ -288,8 +364,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         container.addView(wv, FrameLayout.LayoutParams(-1, -1))
-        accounts.add(acc)
-        if (i == 0) loadAccount(acc) else handler.postDelayed({ loadAccount(acc) }, 20_000)
+        if (i < accounts.size) accounts[i] = acc else accounts.add(acc)
+        // A conta 1 carrega já; as outras entram uma de cada vez (20s, 40s, 60s) ou ao tocar na aba,
+        // para não sobrecarregar a verificação do Cloudflare nem a memória.
+        if (immediate || i == 0) loadAccount(acc)
+        else handler.postDelayed({ loadAccount(acc) }, 20_000L * i)
+    }
+
+    private fun recreateAccount(i: Int) {
+        val old = accounts.getOrNull(i) ?: return
+        container.removeView(old.webView)
+        old.webView.destroy()
+        addAccount(i, true)
+        select(current)
+        Toast.makeText(this, "Conta ${i + 1} reiniciada por falta de memória", Toast.LENGTH_LONG).show()
     }
 
     private fun loadAccount(acc: Account) {
@@ -331,6 +419,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createChannel() {
+        // Remove canais de versões anteriores (avisos de captura/shiny).
         val nm = getSystemService(NotificationManager::class.java)
         nm.deleteNotificationChannel("shiny")
         nm.deleteNotificationChannel(CH_CAPTURA)
@@ -340,28 +429,60 @@ class MainActivity : AppCompatActivity() {
 
     private fun label(i: Int): String = "Conta ${i + 1}"
 
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
     private fun rebuildTabs() {
         tabBar.removeAllViews()
+        val compact = accounts.size >= 3
         accounts.forEachIndexed { i, _ ->
-            val b = Button(this).apply {
-                text = label(i)
-                isAllCaps = false
-                textSize = 13f
+            val tab = TextView(this).apply {
+                text = if (compact) "${i + 1}" else label(i)
+                textSize = if (compact) 16f else 14f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                maxLines = 1
+                setPadding(if (compact) dp(6) else dp(12), dp(9), if (compact) dp(8) else dp(14), dp(9))
+                compoundDrawablePadding = if (compact) dp(5) else dp(8)
+                setCompoundDrawablesRelativeWithIntrinsicBounds(PokeBallDrawable(dp(20)), null, null, null)
                 setOnClickListener { select(i) }
             }
-            tabBar.addView(b, LinearLayout.LayoutParams(0, -2, 1f))
+            val lp = LinearLayout.LayoutParams(0, -2, 1f)
+            lp.setMargins(dp(4), 0, dp(4), 0)
+            tabBar.addView(tab, lp)
         }
-        val gear = Button(this).apply {
-            text = "⚙"
+        val gear = ImageView(this).apply {
+            setImageDrawable(GearDrawable(dp(22)))
+            scaleType = ImageView.ScaleType.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0x33000000)
+                setStroke(dp(1), 0x66FFFFFF)
+            }
             setOnClickListener { showMenu() }
         }
-        tabBar.addView(gear, LinearLayout.LayoutParams(-2, -2))
+        val glp = LinearLayout.LayoutParams(dp(40), dp(40))
+        glp.setMargins(dp(4), 0, dp(2), 0)
+        tabBar.addView(gear, glp)
         updateTabs()
     }
 
     private fun updateTabs() {
         for (i in 0 until tabBar.childCount - 1) {
-            tabBar.getChildAt(i).alpha = if (i == current) 1f else 0.5f
+            val tab = tabBar.getChildAt(i) as? TextView ?: continue
+            val selected = i == current
+            tab.background = GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                if (selected) {
+                    colors = intArrayOf(0xFFFF6F60.toInt(), 0xFFE53935.toInt())
+                    orientation = GradientDrawable.Orientation.TOP_BOTTOM
+                    setStroke(dp(2), 0xFFFFFFFF.toInt())
+                } else {
+                    setColor(0x40000000)
+                    setStroke(dp(1), 0x55FFFFFF)
+                }
+            }
+            tab.setTextColor(if (selected) 0xFFFFFFFF.toInt() else 0xFFFFD6D6.toInt())
+            tab.alpha = if (selected) 1f else 0.85f
         }
     }
 
@@ -369,6 +490,7 @@ class MainActivity : AppCompatActivity() {
         if (i !in accounts.indices) return
         current = i
         prefs.edit().putInt("current", i).apply()
+        // Todas ficam visíveis (empilhadas); só traz a escolhida para a frente.
         accounts[i].webView.bringToFront()
         loadAccount(accounts[i])
         accounts[i].webView.requestFocus()
@@ -411,7 +533,7 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Log copiado", Toast.LENGTH_SHORT).show()
     }
 
-    // ---------- atualização via API Intermediária (Worker) ----------
+    // ---------- atualização via Worker (o token do GitHub fica no servidor) ----------
 
     private class Release(val number: Long, val tag: String, val downloadUrl: String)
 
@@ -441,23 +563,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun fetchLatest(): Release? {
-        val workerUrl = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev?json=true"
-
-        val c = URL(workerUrl).openConnection() as HttpURLConnection
+        val c = URL(UPDATE_URL).openConnection() as HttpURLConnection
         c.connectTimeout = 15000
         c.readTimeout = 15000
         c.requestMethod = "GET"
-
+        c.setRequestProperty("User-Agent", "PokeIdle-App")
         val code = c.responseCode
-        if (code != 200) throw Exception("Servidor respondeu $code")
+        if (code != 200) throw Exception("servidor respondeu $code")
 
         val json = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
         val tag = json.optString("version", "")
         val downloadUrl = json.optString("downloadUrl", "")
-
         val number = tag.filter { it.isDigit() }.toLongOrNull() ?: return null
-        if (downloadUrl.isEmpty()) return null
-
+        if (!downloadUrl.startsWith("https://")) return null
         return Release(number, tag, downloadUrl)
     }
 
@@ -506,6 +624,8 @@ class MainActivity : AppCompatActivity() {
         var url = rel.downloadUrl
 
         repeat(6) {
+            // Só baixa por HTTPS, inclusive nos redirecionamentos.
+            if (!url.startsWith("https://")) throw Exception("endereço de download inseguro")
             val c = URL(url).openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
             c.connectTimeout = 20000
@@ -514,15 +634,15 @@ class MainActivity : AppCompatActivity() {
 
             val code = c.responseCode
             if (code in 301..308) {
-                url = c.getHeaderField("Location") ?: throw Exception("Redirecionamento inválido")
+                url = c.getHeaderField("Location") ?: throw Exception("redirecionamento inválido")
             } else if (code == 200) {
                 c.inputStream.use { input -> out.outputStream().use { input.copyTo(it) } }
                 return out
             } else {
-                throw Exception("Servidor respondeu $code")
+                throw Exception("servidor respondeu $code")
             }
         }
-        throw Exception("Redirecionamentos demais")
+        throw Exception("redirecionamentos demais")
     }
 
     private fun installApk(file: File) {
@@ -552,6 +672,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Não pausamos as WebViews ao sair do app, para o jogo continuar rodando.
     override fun onPause() { super.onPause(); accounts.firstOrNull()?.webView?.resumeTimers() }
     override fun onStop() { super.onStop(); accounts.firstOrNull()?.webView?.resumeTimers() }
     override fun onResume() {
@@ -571,8 +692,10 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val GAME_URL = "https://pokeidle.io/app"
+        const val UPDATE_URL = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev?json=true"
         const val CH_CAPTURA = "captura"
 
+        // Observa o texto que aparece na página. Só LÊ; não clica em nada no jogo.
         const val WATCHER_JS = """
 (function(){
   if (window.__pkWatch) return; window.__pkWatch = true;
