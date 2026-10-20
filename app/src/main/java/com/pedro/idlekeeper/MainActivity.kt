@@ -4,24 +4,23 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.Matrix
-import android.graphics.Path
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import android.view.Gravity
-import android.widget.ImageView
-import android.widget.TextView
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +28,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.Html
+import android.view.Gravity
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -39,11 +40,14 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
@@ -55,7 +59,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** WebView que não se pausa quando o app vai para segundo plano. */
-class KeepAliveWebView(context: android.content.Context) : WebView(context) {
+class KeepAliveWebView(context: Context) : WebView(context) {
     override fun onWindowVisibilityChanged(visibility: Int) {
         if (visibility != View.GONE) super.onWindowVisibilityChanged(View.VISIBLE)
     }
@@ -175,7 +179,10 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        // 1. Pede permissão de notificação e já chama a exibição da notificação limpa
         askNotificationPermission()
+
+        // 2. Inicia o serviço em segundo plano
         ContextCompat.startForegroundService(this, Intent(this, KeepAliveService::class.java))
         askIgnoreBatteryOptimizations()
 
@@ -204,7 +211,6 @@ class MainActivity : AppCompatActivity() {
         val dialogView = FrameLayout(this).apply {
             minimumHeight = h
 
-            // Imagem de fundo (res/drawable/snorlax_halloween_bg); se não existir, usa cor sólida.
             val bgImage = ImageView(context).apply {
                 val imageRes = resources.getIdentifier("snorlax_halloween_bg", "drawable", packageName)
                 if (imageRes != 0) setImageResource(imageRes) else setBackgroundColor(0xFF1E1119.toInt())
@@ -312,7 +318,6 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun addAccount(i: Int, immediate: Boolean = false) {
         val wv = KeepAliveWebView(this)
-        // Conta 1 usa o perfil padrão (mantém o login que você já tinha).
         if (multiProfile && i > 0) {
             try { WebViewCompat.setProfile(wv, "conta${i + 1}") } catch (_: Exception) {}
         }
@@ -335,8 +340,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Se o Android matar o processo da página por falta de memória, reinicia só esta conta
-            // (sem isso o app inteiro fecharia).
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 handler.post { if (accounts.any { it === acc }) recreateAccount(acc.index) }
                 return true
@@ -365,8 +368,6 @@ class MainActivity : AppCompatActivity() {
 
         container.addView(wv, FrameLayout.LayoutParams(-1, -1))
         if (i < accounts.size) accounts[i] = acc else accounts.add(acc)
-        // A conta 1 carrega já; as outras entram uma de cada vez (20s, 40s, 60s) ou ao tocar na aba,
-        // para não sobrecarregar a verificação do Cloudflare nem a memória.
         if (immediate || i == 0) loadAccount(acc)
         else handler.postDelayed({ loadAccount(acc) }, 20_000L * i)
     }
@@ -419,10 +420,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createChannel() {
-        // Remove canais de versões anteriores (avisos de captura/shiny).
         val nm = getSystemService(NotificationManager::class.java)
         nm.deleteNotificationChannel("shiny")
         nm.deleteNotificationChannel(CH_CAPTURA)
+
+        // Criar o canal próprio para o Farm Ativo
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CH_FARM,
+                "PokeIdle Farm Ativo",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            nm.createNotificationChannel(channel)
+        }
     }
 
     // ---------- abas ----------
@@ -490,7 +500,6 @@ class MainActivity : AppCompatActivity() {
         if (i !in accounts.indices) return
         current = i
         prefs.edit().putInt("current", i).apply()
-        // Todas ficam visíveis (empilhadas); só traz a escolhida para a frente.
         accounts[i].webView.bringToFront()
         loadAccount(accounts[i])
         accounts[i].webView.requestFocus()
@@ -533,7 +542,7 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "Log copiado", Toast.LENGTH_SHORT).show()
     }
 
-    // ---------- atualização via Worker (o token do GitHub fica no servidor) ----------
+    // ---------- atualização via Worker ----------
 
     private class Release(val number: Long, val tag: String, val downloadUrl: String)
 
@@ -624,7 +633,6 @@ class MainActivity : AppCompatActivity() {
         var url = rel.downloadUrl
 
         repeat(6) {
-            // Só baixa por HTTPS, inclusive nos redirecionamentos.
             if (!url.startsWith("https://")) throw Exception("endereço de download inseguro")
             val c = URL(url).openConnection() as HttpURLConnection
             c.instanceFollowRedirects = false
@@ -656,9 +664,26 @@ class MainActivity : AppCompatActivity() {
     // ---------- permissões e ciclo de vida ----------
 
     private fun askNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
+            } else {
+                showFarmNotification(this)
+            }
+        } else {
+            showFarmNotification(this)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 100 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            showFarmNotification(this)
+        }
     }
 
     @SuppressLint("BatteryLife")
@@ -672,7 +697,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Não pausamos as WebViews ao sair do app, para o jogo continuar rodando.
     override fun onPause() { super.onPause(); accounts.firstOrNull()?.webView?.resumeTimers() }
     override fun onStop() { super.onStop(); accounts.firstOrNull()?.webView?.resumeTimers() }
     override fun onResume() {
@@ -694,8 +718,52 @@ class MainActivity : AppCompatActivity() {
         const val GAME_URL = "https://pokeidle.io/app"
         const val UPDATE_URL = "https://pokeidle-update-checker.pedrolucasgc18.workers.dev?json=true"
         const val CH_CAPTURA = "captura"
+        const val CH_FARM = "pokeidle_farm_channel"
 
-        // Observa o texto que aparece na página. Só LÊ; não clica em nada no jogo.
+        /** Exibe a notificação com o layout formatado em HTML e o botão de Encerrar */
+        fun showFarmNotification(context: Context) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // Intent para abrir o app ao clicar
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            val openAppPendingIntent = PendingIntent.getActivity(
+                context, 0, openAppIntent, PendingIntent.FLAG_IMMUTABLE
+            )
+
+            // Intent acionada pelo botão Encerrar
+            val stopIntent = Intent(context, ActionReceiver::class.java).apply {
+                action = "ACTION_STOP_APP"
+            }
+            val stopPendingIntent = PendingIntent.getBroadcast(
+                context, 2, stopIntent, PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val titleFormatted = Html.fromHtml(
+                "<b><font color='#FF4500'>PokeIdle</font></b> • <font color='#00E676'><b>Farm Ativo ⚡</b></font>",
+                Html.FROM_HTML_MODE_LEGACY
+            )
+
+            val textFormatted = Html.fromHtml(
+                "Status: <font color='#FFD700'><b>Em Execução</b></font>",
+                Html.FROM_HTML_MODE_LEGACY
+            )
+
+            val notification = NotificationCompat.Builder(context, CH_FARM)
+                .setSmallIcon(android.R.drawable.ic_menu_compass) // Troque por R.drawable.ic_pokeball se houver
+                .setContentTitle(titleFormatted)
+                .setContentText(textFormatted)
+                .setColor(0xFFE53935.toInt())
+                .setContentIntent(openAppPendingIntent)
+                .setOngoing(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Encerrar", stopPendingIntent)
+                .build()
+
+            notificationManager.notify(1001, notification)
+        }
+
         const val WATCHER_JS = """
 (function(){
   if (window.__pkWatch) return; window.__pkWatch = true;
