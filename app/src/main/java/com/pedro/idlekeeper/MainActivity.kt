@@ -193,74 +193,82 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- contas ----------
 
-    private fun askCount(first: Boolean) {
-        val max = if (multiProfile) 4 else 1
-        if (max == 1) {
-            Toast.makeText(
-                this,
-                "Seu Android System WebView não suporta várias contas. Atualize na Play Store.",
-                Toast.LENGTH_LONG
-            ).show()
-            setCount(1, first)
-            return
-        }
-
-        var dlg: AlertDialog? = null
-        val h = minOf(dp(480), (resources.displayMetrics.heightPixels * 0.85).toInt())
-
-        val dialogView = FrameLayout(this).apply {
-            minimumHeight = h
-
-            val bgImage = ImageView(context).apply {
-                val imageRes = resources.getIdentifier("snorlax_halloween_bg", "drawable", packageName)
-                if (imageRes != 0) setImageResource(imageRes) else setBackgroundColor(0xFF1E1119.toInt())
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-            addView(bgImage, FrameLayout.LayoutParams(-1, h))
-
-            val content = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(20), dp(40), dp(20), dp(24))
-            }
-            content.addView(TextView(context).apply {
-                text = "Quantas contas\ndeseja utilizar?"
-                textSize = 22f
-                setTextColor(0xFFFFFFFF.toInt())
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                setShadowLayer(8f, 0f, 0f, 0xFF000000.toInt())
-                setPadding(0, 0, 0, dp(28))
-            })
-
-            val subs = listOf(
-                "Ideal para focar no seu progresso principal",
-                "Gerencie duas contas simultaneamente",
-                "Mais contas usam mais memória e bateria",
-                "Máximo: pede um celular com bastante RAM"
-            )
-            val emojis = listOf("👤", "👥", "👥", "👥")
-            for (n in 1..max) {
-                val lp = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, dp(10)) }
-                content.addView(
-                    optionCard(if (n == 1) "1 Conta" else "$n Contas", subs[n - 1], emojis[n - 1]) {
-                        setCount(n, first); dlg?.dismiss()
-                    }, lp
-                )
-            }
-            addView(content, FrameLayout.LayoutParams(-1, h))
-        }
-
-        dlg = AlertDialog.Builder(this)
-            .setView(dialogView)
-            .setCancelable(!first)
-            .create()
-        dlg.window?.setBackgroundDrawable(GradientDrawable().apply {
-            cornerRadius = dp(18).toFloat()
-            setColor(0xFF1E1119.toInt())
-        })
-        dlg.show()
+  private fun askCount(first: Boolean) {
+    val max = if (multiProfile) 4 else 1
+    if (max == 1) {
+        Toast.makeText(
+            this,
+            "Seu Android System WebView não suporta várias contas. Atualize na Play Store.",
+            Toast.LENGTH_LONG
+        ).show()
+        setCount(1, first)
+        return
     }
+
+    var dlg: AlertDialog? = null
+    val h = minOf(dp(480), (resources.displayMetrics.heightPixels * 0.85).toInt())
+
+    val dialogView = FrameLayout(this).apply {
+        minimumHeight = h
+
+        // 1. Imagem de Fundo (carrega do res/drawable/snorlax_halloween_bg)
+        val bgImage = ImageView(context).apply {
+            val imageRes = resources.getIdentifier("snorlax_halloween_bg", "drawable", packageName)
+            if (imageRes != 0) {
+                setImageResource(imageRes)
+            } else {
+                setBackgroundColor(0xFF1E1119.toInt()) // Cor de contingência caso a imagem não exista
+            }
+            // Preenche todo o card sem distorcer
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        addView(bgImage, FrameLayout.LayoutParams(-1, h))
+
+        // 2. Conteúdo com opacidade e cartões de botões por cima
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(40), dp(20), dp(24))
+        }
+
+        content.addView(TextView(context).apply {
+            text = "Quantas contas\ndeseja utilizar?"
+            textSize = 22f
+            setTextColor(0xFFFFFFFF.toInt())
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setShadowLayer(8f, 0f, 0f, 0xFF000000.toInt())
+            setPadding(0, 0, 0, dp(28))
+        })
+
+        val subs = listOf(
+            "Ideal para focar no seu progresso principal",
+            "Gerencie duas contas simultaneamente",
+            "Mais contas usam mais memória e bateria",
+            "Máximo: pede um celular com bastante RAM"
+        )
+        val emojis = listOf("👤", "👥", "👥", "👥")
+        for (n in 1..max) {
+            val lp = LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, dp(10)) }
+            content.addView(
+                optionCard(if (n == 1) "1 Conta" else "$n Contas", subs[n - 1], emojis[n - 1]) {
+                    setCount(n, first); dlg?.dismiss()
+                }, lp
+            )
+        }
+        addView(content, FrameLayout.LayoutParams(-1, h))
+    }
+
+    dlg = AlertDialog.Builder(this)
+        .setView(dialogView)
+        .setCancelable(!first)
+        .create()
+    dlg.window?.setBackgroundDrawable(GradientDrawable().apply {
+        cornerRadius = dp(18).toFloat()
+        setColor(0xFF1E1119.toInt())
+    })
+    dlg.show()
+}
 
     private fun optionCard(titleText: String, subText: String, emoji: String, onClick: () -> Unit): View {
         return LinearLayout(this).apply {
