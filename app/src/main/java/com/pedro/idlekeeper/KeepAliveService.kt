@@ -12,13 +12,13 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.text.Html
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 
 /**
  * Serviço em primeiro plano: notificação fixa + WakeLock + WifiLock.
- * Isso mantém o processo do app vivo (e a WebView do jogo dentro dele)
- * quando você sai do app ou apaga a tela.
+ * Mantém o processo do app vivo em segundo plano.
  */
 class KeepAliveService : Service() {
 
@@ -67,30 +67,50 @@ class KeepAliveService : Service() {
     }
 
     private fun buildNotification(): Notification {
+        // Intent para abrir o app ao tocar na notificação
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val stop = PendingIntent.getService(
-            this, 1, Intent(this, KeepAliveService::class.java).setAction(ACTION_STOP),
+
+        // Intent para o botão de Encerrar acionar o ActionReceiver
+        val stopIntent = Intent(this, ActionReceiver::class.java).apply {
+            action = "ACTION_STOP_APP"
+        }
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            this, 1, stopIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        // Formatação HTML para o título e texto sem poluição visual
+        val titleFormatted = Html.fromHtml(
+            "<b><font color='#FF4500'>PokeIdle</font></b> • <font color='#00E676'><b>Farm Ativo ⚡</b></font>",
+            Html.FROM_HTML_MODE_LEGACY
+        )
+
+        val textFormatted = Html.fromHtml(
+            "Status: <font color='#FFD700'><b>Em Execução</b></font>",
+            Html.FROM_HTML_MODE_LEGACY
+        )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("PokeIdle rodando")
-            .setContentText("Toque para abrir. A sessão do jogo está sendo mantida.")
+            .setSmallIcon(android.R.drawable.ic_menu_compass) // Ícone transparente da barra de status
+            .setContentTitle(titleFormatted)
+            .setContentText(textFormatted)
+            .setColor(0xFFE53935.toInt()) // Destaque vermelho estilo Pokébola
             .setContentIntent(open)
-            .addAction(0, "Parar", stop)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Encerrar", stopPendingIntent)
             .build()
     }
 
     private fun createChannel() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Sessão do jogo", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL_ID, "PokeIdle Farm Ativo", NotificationManager.IMPORTANCE_LOW)
         )
     }
 
@@ -103,8 +123,8 @@ class KeepAliveService : Service() {
     }
 
     companion object {
-        const val CHANNEL_ID = "keepalive"
-        const val NOTIF_ID = 1
+        const val CHANNEL_ID = "pokeidle_farm_channel"
+        const val NOTIF_ID = 1001
         const val ACTION_STOP = "com.pedro.idlekeeper.STOP"
     }
 }
