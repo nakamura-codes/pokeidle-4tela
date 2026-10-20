@@ -90,21 +90,24 @@ class KeepAliveService : Service() {
             Html.FROM_HTML_MODE_LEGACY
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentTitle(titleFormatted)
             .setContentText(textFormatted)
             .setColor(0xFFE53935.toInt())
             .setContentIntent(open)
-            
-            // Configurações que travam a notificação permanentemente
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Encerrar", stopPendingIntent)
-            .build()
+
+        val notification = builder.build()
+        
+        // Aplica travas rígidas contra deslize manual e limpeza da barra
+        notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT or Notification.FLAG_NO_CLEAR
+
+        return notification
     }
 
     private fun createChannel() {
