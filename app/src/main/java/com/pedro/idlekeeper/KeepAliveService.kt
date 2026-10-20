@@ -18,7 +18,7 @@ import androidx.core.app.ServiceCompat
 
 /**
  * Serviço em primeiro plano: notificação fixa + WakeLock + WifiLock.
- * Mantém o processo do app vivo em segundo plano.
+ * Mantém o processo do app vivo em segundo plano até o encerramento explícito.
  */
 class KeepAliveService : Service() {
 
@@ -67,13 +67,11 @@ class KeepAliveService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        // Intent para abrir o app ao tocar na notificação
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Intent para o botão de Encerrar acionar o ActionReceiver
         val stopIntent = Intent(this, ActionReceiver::class.java).apply {
             action = "ACTION_STOP_APP"
         }
@@ -82,7 +80,6 @@ class KeepAliveService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // Formatação HTML para o título e texto sem poluição visual
         val titleFormatted = Html.fromHtml(
             "<b><font color='#FF4500'>PokeIdle</font></b> • <font color='#00E676'><b>Farm Ativo ⚡</b></font>",
             Html.FROM_HTML_MODE_LEGACY
@@ -94,15 +91,18 @@ class KeepAliveService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_compass) // Ícone transparente da barra de status
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentTitle(titleFormatted)
             .setContentText(textFormatted)
-            .setColor(0xFFE53935.toInt()) // Destaque vermelho estilo Pokébola
+            .setColor(0xFFE53935.toInt())
             .setContentIntent(open)
+            
+            // Configurações que travam a notificação permanentemente
             .setOngoing(true)
-            .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Encerrar", stopPendingIntent)
             .build()
     }
