@@ -1,5 +1,5 @@
-# PokeIdle (2 contas)
-App Android que mantém o pokeidle.io rodando em segundo plano, com até 2 contas em abas.
+# PokeIdle (4 contas)
+App Android que mantém o pokeidle.io rodando em segundo plano, com até 4 contas em abas.
 
 # Instruções de uso
 1. Baixe o APK.
