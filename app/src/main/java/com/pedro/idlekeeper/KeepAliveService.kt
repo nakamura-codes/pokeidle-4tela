@@ -18,7 +18,7 @@ import androidx.core.app.ServiceCompat
 
 /**
  * Serviço em primeiro plano: notificação fixa + WakeLock + WifiLock.
- * Mantém o processo do app vivo em segundo plano até o encerramento explícito.
+ * A notificação permanece travada até o encerramento explícito pelo botão ou fechamento do app.
  */
 class KeepAliveService : Service() {
 
@@ -72,11 +72,21 @@ class KeepAliveService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        // Botão "Encerrar" da notificação
         val stopIntent = Intent(this, ActionReceiver::class.java).apply {
             action = "ACTION_STOP_APP"
         }
         val stopPendingIntent = PendingIntent.getBroadcast(
             this, 1, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        // Se o usuário tentar deslizar/apagar a notificação, este evento a restaura na hora
+        val deleteIntent = Intent(this, ActionReceiver::class.java).apply {
+            action = "ACTION_RESTORE_NOTIFICATION"
+        }
+        val deletePendingIntent = PendingIntent.getBroadcast(
+            this, 2, deleteIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -96,17 +106,15 @@ class KeepAliveService : Service() {
             .setContentText(textFormatted)
             .setColor(0xFFE53935.toInt())
             .setContentIntent(open)
-            .setOngoing(true)
+            .setDeleteIntent(deletePendingIntent) // Restaura automaticamente se for removida
+            .setOngoing(true)                      // Torna a notificação fixa
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Encerrar", stopPendingIntent)
 
         val notification = builder.build()
-        
-        // Aplica travas rígidas contra deslize manual e limpeza da barra
         notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT or Notification.FLAG_NO_CLEAR
-
         return notification
     }
 
