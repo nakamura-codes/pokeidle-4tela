@@ -53,6 +53,7 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="ACTION_STOP_APP" />
+                <action android:name="ACTION_RESTORE_NOTIFICATION" />
             </intent-filter>
         </receiver>
 
